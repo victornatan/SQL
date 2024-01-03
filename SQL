@@ -1,4 +1,4 @@
-
+ 
 OBSERVAÇOES IMPORTANTES:
 
 - AINDA não coloquei index para a melhoria da performance.
