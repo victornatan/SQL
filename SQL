@@ -687,6 +687,21 @@ IF @COMISSAO <> 0.00
 	END;
 END;
 
+8- aqui vamos consulta o contra cheque do funcionario, com base no CPF dele
 
+create or alter  procedure sp_consulta_pagamento (@cpf varchar(15))
+as
+begin
+
+select f.data_de_admissao, f.nome, f.cpf,f.pis, c.nome AS CARGO,p.data_do_pagamento,p.mes_de_referencia,p.salario_bruto,p.inss,p.salario_liquido,'FABRICAR'AS EMPRESA,'163.500.400/0010-00'as CNPJ_EMPRESA
+from CARGO c
+inner join FUNCIONARIO f
+on c.IDCARGO = f.ID_CARGO
+inner join folha_de_pagamento p
+on f.IDFUNCIONARIO = p.id_funcionario
+where f.CPF = @cpf
+order by p.data_do_pagamento desc
+
+end;
 
 
