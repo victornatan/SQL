@@ -281,13 +281,16 @@ BEGIN
  DECLARE @DATA DATE;
  DECLARE @IDVENDEDOR INT;
 
-  SELECT @ID = I.ID_VENDEDOR 
+
+
+ SELECT @ID = I.ID_VENDEDOR 
          FROM inserted I; 
+		 
 SELECT @IDP = IDPEDIDO 
 FROM inserted I;
 
 
--- AQUI VAI PEGAR A QUANTIDADE * O VALOR DO PRODUTO E SOMA E FAZER UM UPDATE NA COLUNA PREÇO TOTAL DO COM A ULTIMA DATA DO PEDIDO
+-- AQUI VAI PEGAR A QUANTIDADE * O VALOR DO PRODUTO E SOMA E FAZER UM UPDATE NA COLUNA PREÇO TOTAL DO COM A ULTIMA DATA DO PEDIDO E COLOCAR DENTRO DA VARIAVEL TOTAL
 
  SELECT @TOTAL = (SELECT (PRO.PREÇO * PE.QUANTIDADE)
 FROM PRODUTO PRO
@@ -295,14 +298,12 @@ INNER JOIN PEDIDO PE
 ON PRO.IDPRODUTO = PE.ID_PRODUTO
 WHERE PE.ID_VENDEDOR = @ID AND IDPEDIDO = @IDP AND DATA_DE_EMISSAO = (SELECT MAX(DATA_DE_EMISSAO) FROM PEDIDO))
 
+
   UPDATE PEDIDO
  SET PREÇO_TOTAL = @TOTAL
  WHERE ID_VENDEDOR = @ID AND IDPEDIDO = @IDP AND DATA_DE_EMISSAO = (SELECT MAX(DATA_DE_EMISSAO) FROM PEDIDO) ;
 
  PRINT 'VALOR TOTAL DO PEDIDO ATUALIZADO COM SUCESSO!'
-
--- Abaixo vamos fazer um UPDATE apos o vendedor finalizar um pedido, e vai pegar o valor total do pedido dele e acrescentar ao ANDAMENTO (que é o valor ja vendido por esse vendedor
-até o momento)
 
   UPDATE META_VENDEDOR
      SET ANDAMENTO = COALESCE(ANDAMENTO, 0) + @TOTAL
@@ -311,16 +312,26 @@ até o momento)
 
  PRINT 'VALOR DA META DO VENDEDOR '+ CAST(@ID AS VARCHAR) + ' FOI ATUALIZADA COM SUCESSO!' ;
 
+ /*  -- Atualizando a tabela META_VENDEDOR
+     UPDATE MV
+    SET ANDAMENTO = COALESCE(MV.ANDAMENTO, 0) + @TOTAL
+    FROM META_VENDEDOR MV
+    WHERE MV.ID_VENDEDOR = @ID;
+
+obs: caso o valor iniciado na coluna anadamento seja 'null', temos que usar o COALESCE, pq varhcar nao soma com int. 
+caso seja iniciado com 0 , podemos deixar como esta.
+OBS: QUANDO FOMOS FAZER UPDATE NA MESMA TABELA QUE ESTA SENDO USADO AFTER INSERT, TEMOS QUE USAR UPDATE E FROM COM A TABELA.
+*/
+
+
 SELECT @META = (SELECT VALOR_META FROM META_VENDEDOR WHERE ID_VENDEDOR = @ID );
 SELECT @ANDAMENTO =  (SELECT ANDAMENTO FROM META_VENDEDOR  WHERE ID_VENDEDOR = @ID)
 SELECT @DATA = (SELECT DATA_FINAL_META FROM META_VENDEDOR WHERE ID_VENDEDOR = @ID)
 SELECT @IDVENDEDOR = (SELECT  ID_VENDEDOR FROM META_VENDEDOR WHERE ID_VENDEDOR = @ID)
 
+ 
 
--- Nessa variável vamos comparar se o valor que ele ja vendeu é >= ao valor da META estipulada e a data atual for >= a data prevista pra fechamento da meta se for, vai inserir na tabela HISTORICO_META,
-onde ficarão todos os registros das vendas.
-
-IF @ANDAMENTO >= @META  AND GETDATE() >=  @DATA 
+IF @ANDAMENTO >= @META AND @DATA = GETDATE() +5 OR @DATA = GETDATE() +4 OR @DATA = GETDATE()  +3 OR @DATA = GETDATE()+2 OR @DATA = GETDATE()+1 OR @DATA = GETDATE()
 BEGIN
     INSERT INTO HISTORICO_META (ID_VENDEDOR, VALOR_META, ANDAMENTO, DATA_FINAL_META)
     VALUES (@IDVENDEDOR, @META, @ANDAMENTO, @DATA)
@@ -329,29 +340,26 @@ BEGIN
     -- Aqui, vamos selecionar a linha específica para atualização
     UPDATE META_VENDEDOR
     SET ANDAMENTO = 0 ,
-	DATA_FINAL_META =  GETDATE()+30
+	DATA_FINAL_META =  GETDATE()+25
     WHERE ID_VENDEDOR = @ID AND ANDAMENTO >= @META;
 
     PRINT 'A META DO VENDEDOR  ' + CAST(@ID AS VARCHAR) + ' FOI BATIDA COM SUCESSO DENTRO DO MES ESTIPULADO!'
 
 END
-ELSE IF @ANDAMENTO < @META  AND GETDATE() >=  @DATA 
+ ELSE IF @ANDAMENTO < @META AND @DATA = GETDATE() +5 OR @DATA = GETDATE() +4 OR @DATA = GETDATE() + 3 OR @DATA = GETDATE()+2 OR @DATA = GETDATE()+1 OR @DATA = GETDATE()
 BEGIN
     INSERT INTO HISTORICO_META (ID_VENDEDOR, VALOR_META, ANDAMENTO, DATA_FINAL_META)
     VALUES (@IDVENDEDOR, @META, @ANDAMENTO, @DATA)
 
-    -- Aqui, vamos selecionar a linha específica para atualização. Quando a data final pra meta for igual a data atual, vamos  ZERAR o ANDAMENTO da meta, e acrescentar mais 30 dias 
-     pra proxima meta.
-
+    -- Aqui, vamos selecionar a linha específica para atualização
     UPDATE META_VENDEDOR
     SET ANDAMENTO = 0,
-	DATA_FINAL_META =  GETDATE()+30
+	DATA_FINAL_META =  GETDATE()+25
     WHERE ID_VENDEDOR = @ID AND ANDAMENTO < @META;
 
-    PRINT '##### ALERTA META NAO BATIDA ##########. O VENDEDOR  ' + CAST(@ID AS VARCHAR) + ' NÃO CONSEGUIU BATER A META!'
+    PRINT '##### ALERTA META NAO BATIDA##########. O VENDEDOR  ' + CAST(@ID AS VARCHAR) + ' NÃO CONSEGUIU BATER A META!'
 END;
 END;
-
 
 3- Explicação no begin abaixo:
 
@@ -370,7 +378,7 @@ declare @nome varchar(100), @cpf varchar(20),@cnpj varchar(25),@id_pedido int,
 
 -- aqui vai pegar os resultados do select abaixo e vai inserir na tabela produçao, isso mostra quais produtos estao sendo produzido no momento.
 
-insert into PRODUTO_EM_FABRICAÇAO (data,nome,cpf,cnpj,id_pedido,id_vendedor,quantidade,data_de_entrega,nomep,tipo,cor,turbo,portas,[status])
+insert into PRODUTO_EM_FABRICAÇAO (data,nome,cpf,cnpj,id_pedido,id_vendedor,quantidade,data_de_entrega,nomep,tipo,cor,turbo,portas,[status]) # nas colunas que vou inserir
 SELECT getdate(),C.NOME,C.CPF,C.CNPJ,PE.IDPEDIDO,PE.ID_VENDEDOR,PE.QUANTIDADE,PE.DATA_DE_ENTREGA,PRO.NOME,PRO.TIPO,PRO.COR,PRO.TURBO,PRO.PORTAS,'ABERTO'
 FROM inserted I 
 INNER JOIN PEDIDO PE
@@ -705,3 +713,132 @@ order by p.data_do_pagamento desc
 end;
 
 
+
+
+--------------------------------------------------------------- PERFORMANCE, SEGURANÇA, INTEGRIDADE --------------------------------------------------------------------------------
+
+
+1- LOCK OTIMISTA:
+
+CONCEITO: Com esse comando, eu consigo ver os dados que ainda não foram garantidos no banco, não foram commitados. Por exemplo, alguém está fazendo um update numa tabela, daí eu não vou conseguir acessar essa tabela através de um select normal, porque ela vai estar em lock. Se eu usar o lock otimista, eu vou conseguir ver mesmo que alguém esteja fazendo o update. Porém, é um perigo de pegar um dado que não foi commitado. Mas não vai mais bloquear. Eu consigo, mesmo com outra pessoa fazendo BEGIN TRAN, ver os dados. Porém, cuidado, se for fazer relatório.
+
+
+SINTAXE: ALTER DATABASE NomeDoBancoDeDados
+SET READ_COMMITTED_SNAPSHOT ON;
+
+
+
+
+2- AUDITORIA:
+
+-- Aqui vamos pegar alguns comandos feitos pelos usuarios, dba, e qualquer outra pessoa que tem acesso ao banco. Vamos capturar os comandos de INSERT,UPDATE, DELETE, E EXECUTE.
+-- Criei um banco de controle, com uma tabela chamada 'auditoria' que vai receber os dados dos arquivos de auditoria. Coloquei no JOB, pra ser realizado todos os dias ás 23:50. Assim fica mais fácil de pesquisar, posso utilizar o WHERE.
+
+
+
+3- BACKUPS:
+
+OBS: Está com notificação pelo e-mail.
+
+-- Criei os backups: full, diferencial, log.
+-- full : uma vez por semana(aos domingos)
+-- diferencial : de segunda a sabado ás 20:00
+-- log:  todos dos dias, a cada 1 hora (tem empresa de é a cada 15 minutos. Então depende de cada empresa)
+
+
+4- INTEGRIDADE:
+
+-- Está verificando todos os dias ás 19:00 (pra não ocorrer no mesmo horário do backup diferencial. Evitando sobrecarga)
+
+
+5- WINDOWS FAILOVER CLUSTER E ALWAYS ON:
+
+CONCEITO: Em caso de falha de do servidor primário ele joga toda produção pro servidor secundário. Ou em caso de ATUALIZAÇÃO do servidor primário, podemos jogar toda produçao pro secundário até a atualização ser concluída.
+
+OBS: Está como modo SINCRONO.
+
+
+6- INDEX, COMPRENSÃO DE INDEX, E COMPRENSÃO DE TABELAS:
+
+
+
+7- PROCEDURES DE MONITORAMENTO DE VULNERABILIDADES, PARA MONITORAMENTO DE PERFORMANCE:
+
+
+A- SP_BLITZINDEX:
+
+CONCEITO: vamos verificar SIZE, COMPRESSION, FILLFACTOR
+
+SP_BLITZINDEX  @DatabaseName = 'banco', @TABLENAME= 'tabela'
+
+
+B- SP_BLITZCACHE:
+
+CONCEITO: vamos verificar quais processos estão rodando com mais pesos.
+
+
+C- EXEC VERIFICANDO_FRAGMENTAÇAO:
+
+CONCEITO: vamos verificar a fragmentaçao dos indices.
+
+EXEC VERIFICANDO_FRAGMENTAÇAO @nome_banco = 'banco', @nome_tabela = 'tabela'
+
+
+D- EXEC SP_WHOISACTIVE:
+
+CONCEITO: vamos verificar quais processos estão bloqueando outros. Qual ID sessão está bloqueando qual.
+
+
+E- SP_BLITZQUERYSTORE:
+
+CONCEITO: vamos verificar o custo das querys, alertas de melhorias, CPU, DURAÇÃO, LEITURAS, GRAVAÇÕES, 
+
+SP_BLITZQUERYSTORE  @DatabaseName = 'banco' 
+
+F- EXEC [SP_PERFORMANCE]:
+
+exec [sp_Performance]  
+
+CONCEITO: vamos ver a memoria total, memoria livre, numero de cpus, numero de cpus fisicos.
+
+G- EXEC SP_BLITZ:
+
+CONCEITO: vamos verificar quais os pontos fracos, e quais as melhorias deveremos fazer.
+
+
+8- PARAMETER SNIFFING:
+
+OBS: resolvendo esse problema.
+
+
+9- PLAN GUIDE:
+
+CONCEITO: Estamos trabalhando numa empresa que ela comprou um programa, e os select que estao dentro do programa nao foi nenhum DBA que ajudou fazer, e esses comandos ja estao todos compilados e nao temos acesso ao codigo fonte. com o PLAN GUIDE conseguimos mesmo nao tendo acesso ao codigo fonte, colocar ou remover OPTIONS.
+
+Plan Guide parametros
+
+@Name: O nome que voce escolher para o plan guide, pode ser encontrado pesquisando em sys.plan_guides
+@stmt: Toda a instrucao SELECT
+@Type: PRINCIPAIS TIPOS
+       OBJECT (NOME DA stored procedure, function, trigger, tvf, svf)
+       SQL (SELECTS) 
+@module_or_batch: Pode ser NULL se o TYPE for SQL ou pode colocar o nome do OBJECT (exemplo nome de uma stored procedure)
+@params = Parametros exatos colocados na querie.
+@hints= Os hints que voce quer adicionar na querie ou remover
+
+
+
+10- RESOURCE GOVERNOR:
+
+CONCEITO: Vamos supor que temos apenas um servidor e, dentro dele, apenas um SQL Server. Dessa forma, precisamos colocar as instâncias de DEV, PRODUÇÃO e BI em um único SQL Server. Para evitar que as instâncias de DEV ou BI atrapalhem a instância de PRODUÇÃO, vamos limitar o uso de CPU das outras instâncias.
+
+Vamos supor que três aplicativos se conectem a esse banco, mas um deles é um aplicativo de banco que requer mais urgência nas operações. Portanto, vamos alocar mais CPU e memória para ele.
+
+
+11- QUERY STORE:
+
+CONCEITO: O SQL Server Query Store é um recurso relativamente novo introduzido no SQL Server 2016. Tem como funçao
+capturar um historico de consultas executadas, estatasticas de execuçao de consultas em tempo de execuçao, 
+planos de execuçao etc. banco de dados especefico. Essas informaçoes ajudam a identificar problemas de 
+desempenho causados por alteraçoes no plano de consulta e soluçao de problemas, encontrando rapidamente 
+as diferenças de desempenho, mesmo apos a reinicializaçao ou atualizaçao do SQL Server. 
