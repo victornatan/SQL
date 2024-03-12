@@ -1,0 +1,207 @@
+-------------------------TRIGGERS
+
+1- Vai atualizar a quantidade do estoque na tabela ESTOQUE_DE_MATERIAL, apos inserçao do idproduto na tabela MATERIAL_PRA_CONSUMO. Caso a quantidade em estoque nao seja
+suficiente pra atender a demanda, aparecerá um erro.
+
+create or alter trigger trg_atualiza_estoque
+on MATERIAL_PRA_CONSUMO
+after insert 
+as 
+begin
+
+declare @qtd int;
+declare @id  int;
+
+-- VAI ATUALIZAR A QUANTIDADE DO ESTOQUE QUE FOI USADO NO CONSUMO
+
+begin
+
+select @qtd  =  i.quantidade,
+       @id    = ID_ESTOQUE
+       from inserted i;
+
+update ESTOQUE_DE_MATERIAL
+set QUANTIDADE = QUANTIDADE - @qtd
+where idestoque = @id;
+
+PRINT 'RETIRADA CONCLUIDA COM SUCESSO!'
+
+end
+if (select quantidade from ESTOQUE_DE_MATERIAL where IDESTOQUE = @id) <= 0
+
+  BEGIN
+         raiserror ('QUANTIDADE EM ESTOQUE NAO É SUFICIENTE PARA COMPLETAR SUA SOLICITAÇAO',16,1);
+         ROLLBACK TRAN;
+    END;
+
+
+end;
+
+
+
+
+
+2- Nessa trigger vamos ter alguns blocos com diferentes comandos. Dentro de cada begin vamos ter as explicaçoes:
+
+
+CREATE OR ALTER TRIGGER TRG_SOMA_PREÇO
+ ON PEDIDO
+AFTER INSERT 
+ AS 
+BEGIN
+
+ DECLARE @ID INT;
+ DECLARE @TOTAL MONEY;
+ DECLARE @IDP INT;
+ DECLARE @ANDAMENTO MONEY;
+ DECLARE @META MONEY;
+ DECLARE @DATA DATE;
+ DECLARE @IDVENDEDOR INT;
+
+
+
+  SELECT @ID = I.ID_VENDEDOR 
+         FROM inserted I; 
+SELECT @IDP = IDPEDIDO 
+FROM inserted I;
+
+
+-- AQUI VAI PEGAR A QUANTIDADE * O VALOR DO PRODUTO E SOMA E FAZER UM UPDATE NA COLUNA PREÇO TOTAL DO COM A ULTIMA DATA DO PEDIDO
+
+ SELECT @TOTAL = (SELECT (PRO.PREÇO * PE.QUANTIDADE)
+FROM PRODUTO PRO
+INNER JOIN PEDIDO PE
+ON PRO.IDPRODUTO = PE.ID_PRODUTO
+WHERE PE.ID_VENDEDOR = @ID AND IDPEDIDO = @IDP AND DATA_DE_EMISSAO = (SELECT MAX(DATA_DE_EMISSAO) FROM PEDIDO))
+
+
+  UPDATE PEDIDO
+ SET PREÇO_TOTAL = @TOTAL
+ WHERE ID_VENDEDOR = @ID AND IDPEDIDO = @IDP AND DATA_DE_EMISSAO = (SELECT MAX(DATA_DE_EMISSAO) FROM PEDIDO) ;
+
+ PRINT 'VALOR TOTAL DO PEDIDO ATUALIZADO COM SUCESSO!'
+
+  UPDATE META_VENDEDOR
+     SET ANDAMENTO = COALESCE(ANDAMENTO, 0) + @TOTAL
+    FROM META_VENDEDOR 
+    WHERE ID_VENDEDOR = @ID;
+
+ PRINT 'VALOR DA META DO VENDEDOR '+ CAST(@ID AS VARCHAR) + ' FOI ATUALIZADA COM SUCESSO!' ;
+
+ /*  -- Atualizando a tabela META_VENDEDOR
+     UPDATE MV
+    SET ANDAMENTO = COALESCE(MV.ANDAMENTO, 0) + @TOTAL
+    FROM META_VENDEDOR MV
+    WHERE MV.ID_VENDEDOR = @ID;
+
+obs: caso o valor iniciado na coluna anadamento seja 'null', temos que usar o COALESCE, pq varhcar nao soma com int. 
+caso seja iniciado com 0 , podemos deixar como esta.
+OBS: QUANDO FOMOS FAZER UPDATE NA MESMA TABELA QUE ESTA SENDO USADO AFTER INSERT, TEMOS QUE USAR UPDATE E FROM COM A TABELA.
+*/
+
+
+SELECT @META = (SELECT VALOR_META FROM META_VENDEDOR WHERE ID_VENDEDOR = @ID );
+SELECT @ANDAMENTO =  (SELECT ANDAMENTO FROM META_VENDEDOR  WHERE ID_VENDEDOR = @ID)
+SELECT @DATA = (SELECT DATA_FINAL_META FROM META_VENDEDOR WHERE ID_VENDEDOR = @ID)
+SELECT @IDVENDEDOR = (SELECT  ID_VENDEDOR FROM META_VENDEDOR WHERE ID_VENDEDOR = @ID)
+
+ 
+
+IF @ANDAMENTO >= @META AND @DATA = GETDATE() +5 OR @DATA = GETDATE() +4 OR @DATA = GETDATE()  +3 OR @DATA = GETDATE()+2 OR @DATA = GETDATE()+1 OR @DATA = GETDATE()
+BEGIN
+    INSERT INTO HISTORICO_META (ID_VENDEDOR, VALOR_META, ANDAMENTO, DATA_FINAL_META)
+    VALUES (@IDVENDEDOR, @META, @ANDAMENTO, @DATA)
+
+
+    -- Aqui, vamos selecionar a linha específica para atualização
+    UPDATE META_VENDEDOR
+    SET ANDAMENTO = 0 ,
+	DATA_FINAL_META =  GETDATE()+25
+    WHERE ID_VENDEDOR = @ID AND ANDAMENTO >= @META;
+
+    PRINT 'A META DO VENDEDOR  ' + CAST(@ID AS VARCHAR) + ' FOI BATIDA COM SUCESSO DENTRO DO MES ESTIPULADO!'
+
+END
+ ELSE IF @ANDAMENTO < @META AND @DATA = GETDATE() +5 OR @DATA = GETDATE() +4 OR @DATA = GETDATE() + 3 OR @DATA = GETDATE()+2 OR @DATA = GETDATE()+1 OR @DATA = GETDATE()
+BEGIN
+    INSERT INTO HISTORICO_META (ID_VENDEDOR, VALOR_META, ANDAMENTO, DATA_FINAL_META)
+    VALUES (@IDVENDEDOR, @META, @ANDAMENTO, @DATA)
+
+    -- Aqui, vamos selecionar a linha específica para atualização
+    UPDATE META_VENDEDOR
+    SET ANDAMENTO = 0,
+	DATA_FINAL_META =  GETDATE()+25
+    WHERE ID_VENDEDOR = @ID AND ANDAMENTO < @META;
+
+    PRINT '##### ALERTA META NAO BATIDA##########. O VENDEDOR  ' + CAST(@ID AS VARCHAR) + ' NÃO CONSEGUIU BATER A META!'
+END;
+END;
+
+3- Explicação no begin abaixo:
+
+
+CREATE or alter TRIGGER TRG_INSERE_PRODUTO_EM_FABRICAÇAO
+ON pedido
+AFTER INSERT
+AS
+BEGIN
+
+declare @nome varchar(100), @cpf varchar(20),@cnpj varchar(25),@id_pedido int,
+@idvendedor int,@quantidade int,@data datetime,
+@nomep varchar(100),@tipo varchar(200),
+@cor varchar(30),@turbo char(5),@portas int, @status varchar(50), @datahj date;
+
+
+-- aqui vai pegar os resultados do select abaixo e vai inserir na tabela produçao, isso mostra quais produtos estao sendo produzido no momento.
+
+insert into PRODUTO_EM_FABRICAÇAO (data,nome,cpf,cnpj,id_pedido,id_vendedor,quantidade,data_de_entrega,nomep,tipo,cor,turbo,portas,[status])
+SELECT getdate(),C.NOME,C.CPF,C.CNPJ,PE.IDPEDIDO,PE.ID_VENDEDOR,PE.QUANTIDADE,PE.DATA_DE_ENTREGA,PRO.NOME,PRO.TIPO,PRO.COR,PRO.TURBO,PRO.PORTAS,'ABERTO'
+FROM inserted I 
+INNER JOIN PEDIDO PE
+ON PE.IDPEDIDO = I.IDPEDIDO
+INNER JOIN CLIENTE C  
+ON C.IDCLIENTE = PE.ID_CLIENTE
+INNER JOIN PRODUTO PRO
+ON PRO.IDPRODUTO = PE.ID_PRODUTO 
+where pe.IDPEDIDO = i.idpedido
+
+PRINT 'NOVA PRODUÇAO INSERIDA COM SUCESSO!'
+
+END;
+
+
+
+4- Toda explicação dentro da trigger.
+
+
+CREATE OR ALTER TRIGGER TRG_UPDATEFUNCIONARIO
+ON HISTORICO_META
+AFTER INSERT
+AS BEGIN 
+
+DECLARE @ID INT;
+DECLARE @ANDAMENTO MONEY;
+DECLARE @salario_bruto MONEY;
+DECLARE @META MONEY;
+
+SELECT @ID =  ID_VENDEDOR FROM inserted I;
+
+SELECT @salario_bruto = salario_bruto FROM FUNCIONARIO WHERE IDFUNCIONARIO = @id;
+SELECT @ANDAMENTO = ANDAMENTO FROM HISTORICO_META WHERE ID_VENDEDOR = @id;
+SELECT @META = VALOR_META FROM HISTORICO_META WHERE ID_VENDEDOR = @id;
+
+-- Quando encerrar o mês para os vendedores baterem a meta fechar, vai ser inserido na tabela HISTORICO_META os resultados deles. Apos a inserção, se o valor vendido for >= a META 
+estipulada, vamos acrescentar o valor da COMISSÃO para o vendedor. Dai vamos fazer o UPDATE na tabela funcionario no campo salario_bruto.
+
+IF @ANDAMENTO >= @META
+BEGIN
+  
+    UPDATE FUNCIONARIO
+    SET SALARIO_BRUTO_COM_COMISSAO = @salario_bruto + @ANDAMENTO * 0.01
+    WHERE IDFUNCIONARIO = @ID;
+
+    PRINT '1% DO VALOR DA META BATIDA FOI ACRESCIDO AO SALÁRIO BRUTO DO VENDEDOR ' + CAST(@ID AS VARCHAR);
+END;
+ END;
+
+
