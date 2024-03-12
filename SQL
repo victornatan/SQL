@@ -713,6 +713,17 @@ order by p.data_do_pagamento desc
 end;
 
 
+CREATE OR ALTER PROCEDURE SP_INFO_VENDEDOR (@IDVENDEDOR AS INT)
+AS
+BEGIN
+	SELECT FUNC.NOME,FUNC.CPF, FUNC.CIDADE, FUNC.ESTADO, FUNC.DDD, FUNC.TELEFONE ,AREA.IDVENDEDOR
+	FROM FUNCIONARIO FUNC
+	INNER JOIN AREA_DE_ATUAÇAO_VENDEDOR AREA
+	ON FUNC.IDFUNCIONARIO = AREA.ID_FUNCIONARIO
+	WHERE IDVENDEDOR = @IDVENDEDOR
+
+END;
+
 
 
 --------------------------------------------------------------- PERFORMANCE, SEGURANÇA, INTEGRIDADE --------------------------------------------------------------------------------
